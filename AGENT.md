@@ -88,10 +88,20 @@ src/
   html/           parse5-based: inline <script> discovery (virtual paths, doc
                   order) and external <script src> resolution
   parsing/        acorn-based JS -> AST, parse-error reporting (path/line/col)
-  functions/      walk AST -> discovered functions (name, kind, start/end loc);
-                  nested-function boundary rules live here
+  model/          shared value types with no runtime behavior (FunctionKind,
+                  SourceLocation, FunctionInfo) — the vocabulary every other
+                  module agrees on; deliberately dependency-free
+  functions/      walk AST (acorn-walk `ancestor`) -> discovered functions
+                  (name, kind, start/end loc), keeping a reference to each
+                  function's own AST node for complexity/ to consume;
+                  nested functions are discovered and named independently
   complexity/     walk a function's AST subtree -> cyclomatic complexity
-                  (excludes nested function bodies)
+                  (excludes nested function bodies via a custom acorn-walk
+                  base visitor that treats Function nodes as traversal
+                  leaves — see calculateComplexity.ts for why the boundary
+                  no-ops must be one shared named function, not three
+                  inline arrows: a v8/vitest coverage-attribution quirk
+                  under-counts otherwise)
   coverage/
     run.ts          execute --run command from project root, check exit status
     discovery.ts     locate a coverage report in conventional locations
@@ -130,12 +140,19 @@ src/
 
 ### Scenario/implementation order (outside-in, simplest first)
 
-1. Single JS file, multiple function kinds (declaration/expression/arrow/
+1. ✅ Single JS file, multiple function kinds (declaration/expression/arrow/
    method) → `parsing/`, `functions/`, base complexity = 1.
-2. Nested functions → parent complexity excludes nested decision points.
-3. Each complexity construct individually (`if`, `for`/`for-in`/`for-of`,
+   (`features/discover-functions.feature`, extended to cover every kind in
+   spec §3 — constructor/getter/setter/object-method/private/computed/
+   literal-keyed methods too — not just the four named in the example.)
+2. ✅ Nested functions → parent complexity excludes nested decision points.
+   (Covered by unit tests in `test/unit/complexity/calculateComplexity.test.ts`
+   for nested function declarations, function expressions, and arrows.)
+3. ✅ Each complexity construct individually (`if`, `for`/`for-in`/`for-of`,
    `while`/`do-while`, `catch`, `case`, `?:`, `&&`, `||`) → `complexity/`.
-4. HTML file with multiple inline scripts → `html/` inline-script + virtual
+   (Note: `default:` clauses are deliberately excluded — spec §8 says "case
+   clause", read literally.)
+4. **Next up.** HTML file with multiple inline scripts → `html/` inline-script + virtual
    path assignment, feeding the same `parsing/`/`functions/` pipeline.
 5. HTML file referencing an external script (incl. one outside source root
    but inside project root) → `html/` external resolution +
