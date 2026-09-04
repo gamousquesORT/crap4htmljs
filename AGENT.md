@@ -85,8 +85,14 @@ src/
     changed.ts        --changed mode (depends on git/)
     exclude.ts          node_modules/dist/build/coverage/vendor/hidden-dir rules
   git/            gitStatus(cwd) -> {modified, added, untracked, renamed...}
-  html/           parse5-based: inline <script> discovery (virtual paths, doc
-                  order) and external <script src> resolution
+  html/           parse5-based: inline <script> discovery (virtual paths
+                  numbered by one-based order among ALL <script> tags in the
+                  document, whether inline or external, so numbering stays
+                  stable once external-script resolution is added) plus
+                  translateLocation() mapping an in-snippet AST location back
+                  to the enclosing HTML file's real line/column. External
+                  <script src> resolution itself is not yet implemented
+                  (scenario 5).
   parsing/        acorn-based JS -> AST, parse-error reporting (path/line/col)
   model/          shared value types with no runtime behavior (FunctionKind,
                   SourceLocation, FunctionInfo) — the vocabulary every other
@@ -116,7 +122,11 @@ src/
   errors/         typed errors mapped 1:1 to exit codes (1,2,3,4,5)
   orchestration/  composition root: discovery -> parsing -> functions ->
                   complexity -> coverage -> attribution -> crap -> report ->
-                  threshold; returns a result + exit code (no process.* here)
+                  threshold; returns a result + exit code (no process.* here).
+                  analyzeFunctions.ts holds the parse->discover->score step
+                  shared by analyzeJavaScriptSource.ts (plain .js/.mjs/.cjs)
+                  and analyzeHtmlSource.ts (HTML inline scripts, which also
+                  applies html/'s translateLocation() after scoring)
   main.ts         thin bin entrypoint: cli/ -> orchestration/ -> stdout/stderr
                   + process.exitCode (the only module allowed to touch process.*)
 ```
@@ -152,10 +162,13 @@ src/
    `while`/`do-while`, `catch`, `case`, `?:`, `&&`, `||`) → `complexity/`.
    (Note: `default:` clauses are deliberately excluded — spec §8 says "case
    clause", read literally.)
-4. **Next up.** HTML file with multiple inline scripts → `html/` inline-script + virtual
+4. ✅ HTML file with multiple inline scripts → `html/` inline-script + virtual
    path assignment, feeding the same `parsing/`/`functions/` pipeline.
-5. HTML file referencing an external script (incl. one outside source root
-   but inside project root) → `html/` external resolution +
+   (`features/discover-inline-scripts.feature`; also covers a
+   non-executable script consuming a document-order slot without being
+   analyzed, and location translation back to the HTML file's coordinates.)
+5. **Next up.** HTML file referencing an external script (incl. one outside
+   source root but inside project root) → `html/` external resolution +
    `discovery/exclude.ts` boundary rules.
 6. Missing coverage (no `--coverage`/`--run`) → functions report `N/A`/`N/A`.
 7. Malformed coverage data explicitly requested → exit code 4.
